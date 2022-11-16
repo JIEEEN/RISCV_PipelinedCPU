@@ -23,6 +23,8 @@ module rv32i_cpu (
   wire [4:0]  alucontrol;
   wire        memtoreg, memwrite;
   wire        branch, jal, jalr;
+  
+  
 
   assign Memwrite = memwrite ;
 
@@ -183,12 +185,12 @@ module aludec(input      [6:0] opcode,
 
       `OP_I_ARITH:   // I-type Arithmetic
 		begin
-			case(funct3)
-			 3'b000:  alucontrol <= #`simdelay 5'b00000; // addition (addi)
-			 3'b110:  alucontrol <= #`simdelay 5'b00010; // or (ori)
-			 3'b100:  alucontrol <= #`simdelay 5'b00011; // xori 
-			 3'b111:  alucontrol <= #`simdelay 5'b00001; // and (andi)
-			 3'b001:  alucontrol <= #`simdelay 5'b00100; // slli (=sll) Jin
+			case({funct7, funct3})
+			 10'b???????_000:  alucontrol <= #`simdelay 5'b00000; // addition (addi)
+			 10'b???????_110:  alucontrol <= #`simdelay 5'b00010; // or (ori)
+			 10'b???????_100:  alucontrol <= #`simdelay 5'b00011; // xori 
+			 10'b???????_111:  alucontrol <= #`simdelay 5'b00001; // and (andi)
+			 10'b0000000_001:  alucontrol <= #`simdelay 5'b00100; // slli (=sll) Jin
           default: alucontrol <= #`simdelay 5'bxxxxx; // ???
         endcase
 		end
@@ -241,7 +243,7 @@ module datapath(input         clk, reset,
   wire [4:0]  rs1, rs2, rd;
   reg [4:0]  rd_ID_EXE, rd_EXE_MEM, rd_MEM_WB; // rd extended with FF
   wire [2:0]  funct3;
-  wire [31:0] rs1_data, rs2_data; //del?
+  wire [31:0] rs1_data, rs2_data;
   reg  [31:0] rd_data;
   wire [20:1] jal_imm;
   wire [31:0] se_jal_imm;
@@ -281,6 +283,8 @@ module datapath(input         clk, reset,
   wire [1:0]	fw1, fw2;
   reg  [4:0]    rs1_ID_EXE, rs2_ID_EXE;
   
+  wire			stall;
+  
   wire [31:0] branch_dest, jal_dest, jalr_dest;		
   wire		  Nflag, Zflag, Cflag, Vflag;
   wire		  f3beq, f3blt, f3bgeu;
@@ -311,21 +315,23 @@ module datapath(input         clk, reset,
 
   assign branch_dest = (pc_ID_EXE + se_br_imm_ff); //chg : (pc + se_br_imm) -> (pc_ID_EXE + se_br_imm_ff)
   assign jal_dest 	= (pc_ID_EXE + se_jal_imm_ff); //chg : (pc + se_jal_imm) -> (pc_ID_EXE + se_jal_imm_ff)
-  assign jalr_dest   = {aluout_EXE_MEM[31:1],1'b0};	///////////***********************?////////////////
+  assign jalr_dest   = {aluout[31:1],1'b0};	///////////***********************?////////////////
 
   always @(posedge clk, posedge reset) //1
   begin
      if (reset)  pc <= 32'b0;
 	  else 
 	  begin
-	      if (btaken) // branch_taken
-				pc <= #`simdelay branch_dest;
-		   else if (jal_ff) // jal
-				pc <= #`simdelay jal_dest;
-			else if (jalr_ff)
-				pc <= #`simdelay jalr_dest;	
-		   else 
-				pc <= #`simdelay (pc + 4);
+			if(~stall)
+				if (btaken) // branch_taken
+					pc <= #`simdelay branch_dest;
+				else if (jal_ff) // jal
+					pc <= #`simdelay jal_dest;
+				else if (jalr_ff)
+					pc <= #`simdelay jalr_dest;	
+				else 
+					pc <= #`simdelay (pc + 4);
+			
 	  end
   end
 
@@ -363,7 +369,7 @@ module datapath(input         clk, reset,
 		
 	always @(posedge clk) //3
 		begin
-			inst_ff <= inst;
+			if(~stall) inst_ff <= inst;
 		end
 		
 	always @(posedge clk) //4
@@ -374,9 +380,17 @@ module datapath(input         clk, reset,
 			alucontrol_ff <= alucontrol;
 			jal_ff <= jal;
 			jalr_ff <= jalr;
-			memwrite_ID_EXE <= memwrite;
 			memtoreg_ID_EXE <= memtoreg;
-			regwrite_ID_EXE <= regwrite;
+			if(stall)
+				begin
+					memwrite_ID_EXE <= 1'b0;
+					regwrite_ID_EXE <= 1'b0;
+				end
+			else
+				begin
+					memwrite_ID_EXE <= memwrite;
+					regwrite_ID_EXE <= regwrite;
+				end
 		end
 		
 	always @(posedge clk) //5
@@ -471,6 +485,7 @@ module datapath(input         clk, reset,
 		.Z			(Zflag),
 		.C			(Cflag),
 		.V			(Vflag));
+		
 
 	// 1st source to ALU (alusrc1)
 	always@(*)
@@ -513,8 +528,15 @@ module datapath(input         clk, reset,
 		.rs2_EXE     (rs2_ID_EXE),
 		.rd_MEM     (rd_EXE_MEM),
 		.rd_WB (rd_MEM_WB),
-		.forward_1 (fw1), //여기 있는걸 위에서 alusrc부분에 사용
-		.forward_2 (fw2)); //여기 있는걸 위에서 alusrc부분에 사용
+		.forward_1 (fw1), 
+		.forward_2 (fw2));
+		
+	Interlock i_Interlock(
+		.rs1_ID	(rs1),
+		.rs2_ID	(rs2),
+		.rd_EXE	(rd_ID_EXE),
+		.memtoreg_EXE	(memtoreg_ID_EXE),
+		.stall	(stall));
 	
 endmodule
 
@@ -547,3 +569,20 @@ module Forwarding_Unit(input  [4:0] rs1_EXE,
 		end
 		
 endmodule
+
+
+module Interlock(input	[4:0] rs1_ID,
+					  input	[4:0] rs2_ID,
+					  input  [4:0] rd_EXE,
+					  input			memtoreg_EXE,
+					  output reg	stall);
+					  
+	always @(*)
+		begin
+			if (memtoreg_EXE && ((rd_EXE[4:0] == rs1_ID[4:0]) || (rd_EXE[4:0] == rs2_ID[4:0])))
+				stall = 1'b1;
+			else stall = 1'b0;
+		end
+		
+endmodule
+			
