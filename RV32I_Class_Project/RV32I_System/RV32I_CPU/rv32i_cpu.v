@@ -469,7 +469,10 @@ module datapath(input         clk, reset,
 	// 1st source to ALU (alusrc1)
 	always@(*)
 	begin
-		if      (auipc_ff)	alusrc1[31:0]  =  pc; //chg : auipc -> auipc_ff
+		//// below 2 line add
+		if (fw1 == 2'b10) alusrc1[31:0]  =  rd_MEM_WB; //ff 
+		else if (fw1 == 2'b01) alusrc1[31:0]  =  rd_EXE_MEM; //ff
+		else if      (auipc_ff)	alusrc1[31:0]  =  pc; //chg : auipc -> auipc_ff
 		else if (lui_ff) 		alusrc1[31:0]  =  32'b0;
 		else          		alusrc1[31:0]  =  rs1_data_ID_EXE; //chg : rs1_data[31:0] -> rs1_data_ID_EXE
 	end
@@ -477,7 +480,10 @@ module datapath(input         clk, reset,
 	// 2nd source to ALU (alusrc2)
 	always@(*)
 	begin
-		if	     (auipc_ff | lui_ff)			alusrc2[31:0] = auipc_lui_imm[31:0]; //chg : auipc -> auipc_ff
+		//// below 2 line add
+		if(fw2 == 2'b10) alusrc2[31:0]  =  rd_MEM_WB; //ff
+		else if (fw2 == 2'b01) alusrc2[31:0]  =  rd_EXE_MEM; //ff
+		else if	     (auipc_ff | lui_ff)			alusrc2[31:0] = auipc_lui_imm[31:0]; //chg : auipc -> auipc_ff
 		else if (alusrc_ff & memwrite_EXE_MEM)	alusrc2[31:0] = se_imm_stype[31:0]; //chg : alusrc -> alusrc_ff
 		else if (alusrc_ff)					alusrc2[31:0] = se_imm_itype[31:0]; //chg : alusrc -> alusrc_ff
 		else									alusrc2[31:0] = rs2_data_ID_EXE; //chg : rs2_data[31:0] -> rs2_data_ID_EXE
