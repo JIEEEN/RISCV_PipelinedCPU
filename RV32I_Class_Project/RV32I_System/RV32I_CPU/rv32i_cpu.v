@@ -144,7 +144,7 @@ module maindec(input  [6:0] opcode,
       `OP_R: 			controls <= #`simdelay 9'b0010_0000_0; // R-type
       `OP_I_ARITH: 	controls <= #`simdelay 9'b0011_0000_0; // I-type Arithmetic
       `OP_I_LOAD: 	controls <= #`simdelay 9'b0011_1000_0; // I-type Load
-      `OP_I_JALR: 	controls <= #`simdelay 9'b0011_0000_1; ///////////////////////////////////
+      `OP_I_JALR: 	controls <= #`simdelay 9'b0011_0000_1; // jalr
       `OP_S: 			controls <= #`simdelay 9'b0001_0100_0; // S-type Store
       `OP_B: 			controls <= #`simdelay 9'b0000_0010_0; // B-type Branch
       `OP_U_LUI: 		controls <= #`simdelay 9'b0111_0000_0; // LUI
@@ -186,9 +186,9 @@ module aludec(input      [6:0] opcode,
 			case(funct3)
 			 3'b000:  alucontrol <= #`simdelay 5'b00000; // addition (addi)
 			 3'b110:  alucontrol <= #`simdelay 5'b00010; // or (ori)
-			 3'b100:  alucontrol <= #`simdelay 5'b00011; // xori //////////////////////////////////////
+			 3'b100:  alucontrol <= #`simdelay 5'b00011; // xori 
 			 3'b111:  alucontrol <= #`simdelay 5'b00001; // and (andi)
-			 3'b001:  alucontrol <= #`simdelay 5'b00100; // slli (=sll)
+			 3'b001:  alucontrol <= #`simdelay 5'b00100; // slli (=sll) Jin
           default: alucontrol <= #`simdelay 5'bxxxxx; // ???
         endcase
 		end
@@ -202,7 +202,7 @@ module aludec(input      [6:0] opcode,
       `OP_U_LUI: 												// U-type (LUI)
 			alucontrol <= #`simdelay 5'b00000;
       `OP_U_AUIPC: 											// U-type (AUIPC)
-      	alucontrol <= #`simdelay 5'b00000;  		// addition 
+      		alucontrol <= #`simdelay 5'b00000;  		// addition 
 
       `OP_B:   												// B-type Branch (BEQ, BNE, ...)
       	alucontrol <= #`simdelay 5'b10000;  // subtraction 
