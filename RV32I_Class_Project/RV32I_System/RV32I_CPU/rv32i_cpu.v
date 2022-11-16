@@ -215,35 +215,7 @@ module aludec(input      [6:0] opcode,
 endmodule
 
 
-//
-// DATA_FORWARDING
-//
-module Forward_Unit(input  [4:0] rs1_EXE,
-						  input  [4:0] rs2_EXE,
-						  input  [4:0] rd_MEM,
-						  input  [4:0] rd_WB,
-						  output reg [1:0] forward_1,
-						  output reg [1:0] forward_2);
 
-	always @(*)
-		begin
-			if (rd_WB[4:0] == rs1_EXE[4:0])
-				forward_1 = 2'b10;
-			else if (rd_MEM[4:0] == rs1_EXE[4:0])
-				forward_1 = 2'b01;
-			else forward_1 = 2'b00;
-		end
-	
-	always @(*)
-		begin
-			if (rd_WB[4:0] == rs2_EXE[4:0])
-				forward_2 = 2'b10;
-			else if (rd_MEM[4:0] == rs2_EXE[4:0])
-				forward_2 = 2'b01;
-			else forward_2 = 2'b00;
-		end
-		
-endmodule
 
 //
 // CPU datapath
@@ -509,4 +481,34 @@ module datapath(input         clk, reset,
 		else						rd_data[31:0] = aluout_MEM_WB; //chg : aluout -> aluout_MEM_WB;
 	end
 	
+endmodule
+
+//
+// DATA_FORWARDING
+//
+module Forward_Unit(input  [4:0] rs1_EXE,
+						  input  [4:0] rs2_EXE,
+						  input  [4:0] rd_MEM,
+						  input  [4:0] rd_WB,
+						  output reg [1:0] forward_1,
+						  output reg [1:0] forward_2);
+
+	always @(*)
+		begin
+			if (rd_WB[4:0] == rs1_EXE[4:0])
+				forward_1 = 2'b10;
+			else if (rd_MEM[4:0] == rs1_EXE[4:0])
+				forward_1 = 2'b01;
+			else forward_1 = 2'b00;
+		end
+	
+	always @(*)
+		begin
+			if (rd_WB[4:0] == rs2_EXE[4:0])
+				forward_2 = 2'b10;
+			else if (rd_MEM[4:0] == rs2_EXE[4:0])
+				forward_2 = 2'b01;
+			else forward_2 = 2'b00;
+		end
+		
 endmodule
