@@ -266,10 +266,20 @@ module datapath(input         clk, reset,
   reg 		alusrc_ff; //ff 
   reg [4:0] alucontrol_ff; //ff
   reg 		jal_ff, jalr_ff; //ff
+
+  reg			memwrite_ID_EXE; //ff
+  reg			memtoreg_ID_EXE; //ff
+  reg			regwrite_ID_EXE; //ff
   
-  reg			regwrite_ff; //ff
-  reg			memtoreg_ff; //ff
-  reg			memwrite_ff; //ff
+  reg			memwrite_EXE_MEM; //ff
+  reg			regwrite_EXE_MEM; //ff
+  reg			memtoreg_EXE_MEM; //ff
+
+  reg			regwrite_MEM_WB; //ff
+  reg			memtoreg_MEM_WB; //ff
+
+  wire [1:0]	fw1, fw2;
+  
   
   wire [31:0] branch_dest, jal_dest, jalr_dest;		
   wire		  Nflag, Zflag, Cflag, Vflag;
@@ -335,7 +345,7 @@ module datapath(input         clk, reset,
   //
   regfile i_regfile(
     .clk			(clk),
-    .we			(regwrite_ff),
+    .we			(regwrite_MEM_WB), //ff
     .rs1			(rs1),
     .rs2			(rs2),
     .rd			(rd_MEM_WB),
@@ -364,6 +374,9 @@ module datapath(input         clk, reset,
 			alucontrol_ff <= alucontrol;
 			jal_ff <= jal;
 			jalr_ff <= jalr;
+			memwrite_ID_EXE <= memwrite;
+			memtoreg_ID_EXE <= memtoreg;
+			regwrite_ID_EXE <= regwrite;
 		end
 		
 	always @(posedge clk) //5
@@ -396,7 +409,9 @@ module datapath(input         clk, reset,
 		
 	always @(posedge clk) //10
 		begin
-			memwrite_ff <= memwrite;
+			memwrite_EXE_MEM <= memwrite_ID_EXE;
+			memtoreg_EXE_MEM <= memtoreg_ID_EXE;
+			regwrite_EXE_MEM <= regwrite_ID_EXE;
 		end
 		
 	always @(posedge clk) //11
@@ -416,8 +431,8 @@ module datapath(input         clk, reset,
 	
 	always @(posedge clk) //14
 		begin
-			regwrite_ff <= regwrite;
-			memtoreg_ff <= memtoreg;
+			regwrite_MEM_WB <= regwrite_EXE_MEM;
+			memtoreg_MEM_WB <= memtoreg_EXE_MEM;
 		end
 		
 	always @(posedge clk) //15
@@ -463,7 +478,7 @@ module datapath(input         clk, reset,
 	always@(*)
 	begin
 		if	     (auipc_ff | lui_ff)			alusrc2[31:0] = auipc_lui_imm[31:0]; //chg : auipc -> auipc_ff
-		else if (alusrc_ff & memwrite_ff)	alusrc2[31:0] = se_imm_stype[31:0]; //chg : alusrc -> alusrc_ff
+		else if (alusrc_ff & memwrite_EXE_MEM)	alusrc2[31:0] = se_imm_stype[31:0]; //chg : alusrc -> alusrc_ff
 		else if (alusrc_ff)					alusrc2[31:0] = se_imm_itype[31:0]; //chg : alusrc -> alusrc_ff
 		else									alusrc2[31:0] = rs2_data_ID_EXE; //chg : rs2_data[31:0] -> rs2_data_ID_EXE
 	end
@@ -477,16 +492,24 @@ module datapath(input         clk, reset,
 	always@(*)
 	begin
 		if	     (jal_ff | jalr_ff)			rd_data[31:0] = pc + 4;
-		else if (memtoreg_ff)	rd_data[31:0] = MemRdata_ff;
-		else						rd_data[31:0] = aluout_MEM_WB; //chg : aluout -> aluout_MEM_WB;
+		else if (memtoreg_MEM_WB)	rd_data[31:0] = MemRdata_ff; //chg : memtoreg -> memtoreg_MEM_WB, MemRdata -> MemRdata_ff
+		else						rd_data[31:0] = aluout_MEM_WB; //chg : aluout -> aluout_MEM_WB
 	end
+
+	Forwarding_Unit i_Forwarding_Unit( 
+		.rs1_EXE     (rs1_data_ID_EXE),
+		.rs2_EXE     (rs2_data_ID_EXE),
+		.rd_MEM     (rd_EXE_MEM),
+		.rd_WB (rd_MEM_WB),
+		.forward_1 (fw1), //여기 있는걸 위에서 alusrc부분에 사용
+		.forward_2 (fw2)); //여기 있는걸 위에서 alusrc부분에 사용
 	
 endmodule
 
 //
 // DATA_FORWARDING
 //
-module Forward_Unit(input  [4:0] rs1_EXE,
+module Forwarding_Unit(input  [4:0] rs1_EXE,
 						  input  [4:0] rs2_EXE,
 						  input  [4:0] rd_MEM,
 						  input  [4:0] rd_WB,
