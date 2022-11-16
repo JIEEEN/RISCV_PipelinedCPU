@@ -279,7 +279,7 @@ module datapath(input         clk, reset,
   reg			memtoreg_MEM_WB; //ff
 
   wire [1:0]	fw1, fw2;
-  
+  reg  [4:0]    rs1_ID_EXE, rs2_ID_EXE;
   
   wire [31:0] branch_dest, jal_dest, jalr_dest;		
   wire		  Nflag, Zflag, Cflag, Vflag;
@@ -304,7 +304,7 @@ module datapath(input         clk, reset,
   assign f3blt  = (funct3 == 3'b100);
   assign f3bgeu = (funct3 == 3'b111);	
 
-  assign beq_taken  =  branch & f3beq & Zflag;
+  assign beq_taken  =  branch & f3beq & Zflag;        ////////////////// to be correct/////
   assign blt_taken  =  branch & f3blt & (Nflag != Vflag);
   assign bgeu_taken =  branch & f3bgeu & Cflag;
   assign btaken     =  beq_taken  | blt_taken | bgeu_taken; 
@@ -450,6 +450,12 @@ module datapath(input         clk, reset,
 			rd_MEM_WB <= rd_EXE_MEM;
 		end
 		
+
+	always @(posedge clk) //for forwarding unit
+		begin
+			rs1_ID_EXE <= rs1;
+			rs2_ID_EXE <= rs2;
+		end
 		
 	
 
@@ -503,8 +509,8 @@ module datapath(input         clk, reset,
 	end
 
 	Forwarding_Unit i_Forwarding_Unit( 
-		.rs1_EXE     (rs1_data_ID_EXE),
-		.rs2_EXE     (rs2_data_ID_EXE),
+		.rs1_EXE     (rs1_ID_EXE),
+		.rs2_EXE     (rs2_ID_EXE),
 		.rd_MEM     (rd_EXE_MEM),
 		.rd_WB (rd_MEM_WB),
 		.forward_1 (fw1), //여기 있는걸 위에서 alusrc부분에 사용
