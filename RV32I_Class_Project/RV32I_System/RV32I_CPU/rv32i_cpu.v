@@ -18,21 +18,31 @@ module rv32i_cpu (
             output [31:0] MemWdata, 	// data to write to memory
             input  [31:0] MemRdata); 	// data read from memory
 
+  // ###### SangJin Park : Start #####
   wire        auipc, lui;
   wire        alusrc, regwrite;
   wire [4:0]  alucontrol;
   wire        memtoreg, memwrite;
-  wire        branch, jal, jalr;
+  wire        branch, jal, jalr, stall;
   
-  
+  reg	 [31:0] inst_IF_ID;
 
-  assign Memwrite = memwrite ;
+  always @(posedge clk) 	//instruction flip-flop
+	begin
+		if(stall)
+			inst_IF_ID <= inst_IF_ID;
+		else inst_IF_ID <= inst;
+	end
+
+  // ###### SangJin Park : End #####
 
   // Instantiate Controller
   controller i_controller(
-      .opcode		(inst[6:0]), 
-		.funct7		(inst[31:25]), 
-		.funct3		(inst[14:12]), 
+  		// ###### SangJin Park : Start #####
+      	.opcode		(inst_IF_ID[6:0]), 
+		.funct7		(inst_IF_ID[31:25]), 
+		.funct3		(inst_IF_ID[14:12]), 
+		// ###### SangJin Park : End #####
 		.auipc		(auipc),
 		.lui			(lui),
 		.memtoreg	(memtoreg),
@@ -59,10 +69,14 @@ module rv32i_cpu (
 		.jalr				(jalr),
 		.alucontrol		(alucontrol),
 		.pc				(pc),
-		.inst				(inst),
-		.aluout			(Memaddr), 
-		.MemWdata		(MemWdata),
-		.MemRdata		(MemRdata));
+  		// ###### SangJin Park : Start #####
+		.inst				(inst_IF_ID),
+		.aluout_EXE_MEM			(Memaddr), 
+		.MemWdata_EXE_MEM		(MemWdata),
+		.MemRdata_EXE_MEM		(MemRdata),
+		.memwrite_tmp		(Memwrite),
+		.stall_tmp			(stall));
+		// ###### SangJin Park : End #####
 
 endmodule
 
@@ -113,7 +127,7 @@ endmodule
 `define OP_R			7'b0110011
 `define OP_I_ARITH	7'b0010011
 `define OP_I_LOAD  	7'b0000011
-`define OP_I_JALR  	7'b1100111		////////////////////////////////
+`define OP_I_JALR  	7'b1100111		
 `define OP_S			7'b0100011
 `define OP_B			7'b1100011
 `define OP_U_LUI		7'b0110111
@@ -146,7 +160,7 @@ module maindec(input  [6:0] opcode,
       `OP_R: 			controls <= #`simdelay 9'b0010_0000_0; // R-type
       `OP_I_ARITH: 	controls <= #`simdelay 9'b0011_0000_0; // I-type Arithmetic
       `OP_I_LOAD: 	controls <= #`simdelay 9'b0011_1000_0; // I-type Load
-      `OP_I_JALR: 	controls <= #`simdelay 9'b0011_0000_1; // jalr
+      `OP_I_JALR: 	controls <= #`simdelay 9'b0011_0000_1; // JALR
       `OP_S: 			controls <= #`simdelay 9'b0001_0100_0; // S-type Store
       `OP_B: 			controls <= #`simdelay 9'b0000_0010_0; // B-type Branch
       `OP_U_LUI: 		controls <= #`simdelay 9'b0111_0000_0; // LUI
@@ -156,8 +170,6 @@ module maindec(input  [6:0] opcode,
     endcase
   end
 
-	
-  
 endmodule
 
 //
@@ -179,34 +191,36 @@ module aludec(input      [6:0] opcode,
 			 10'b0100000_000: alucontrol <= #`simdelay 5'b10000; // subtraction (sub)
 			 10'b0000000_111: alucontrol <= #`simdelay 5'b00001; // and (and)
 			 10'b0000000_110: alucontrol <= #`simdelay 5'b00010; // or (or)
+			 10'b0000000_100: alucontrol <= #`simdelay 5'b00011; // xor 
+			 10'b0000000_001: alucontrol <= #`simdelay 5'b00100; // sll
           default:         alucontrol <= #`simdelay 5'bxxxxx; // ???
         endcase
 		end
 
       `OP_I_ARITH:   // I-type Arithmetic
 		begin
-			case({funct7, funct3})
-			 10'b???????_000:  alucontrol <= #`simdelay 5'b00000; // addition (addi)
-			 10'b???????_110:  alucontrol <= #`simdelay 5'b00010; // or (ori)
-			 10'b???????_100:  alucontrol <= #`simdelay 5'b00011; // xori 
-			 10'b???????_111:  alucontrol <= #`simdelay 5'b00001; // and (andi)
-			 10'b0000000_001:  alucontrol <= #`simdelay 5'b00100; // slli (=sll) Jin
+			casez({funct7, funct3})
+			 10'b???????_000:  alucontrol <= #`simdelay 5'b00000; // additioni
+			 10'b???????_110:  alucontrol <= #`simdelay 5'b00010; // ori	
+			 10'b???????_111:  alucontrol <= #`simdelay 5'b00001; // andi
+			 10'b???????_100:  alucontrol <= #`simdelay 5'b00011; // xori
+			 10'b0000000_001:  alucontrol <= #`simdelay 5'b00100; // slli
           default: alucontrol <= #`simdelay 5'bxxxxx; // ???
         endcase
 		end
 
-      `OP_I_LOAD:												// I-type Load (LW, LH, LB...)
-			alucontrol <= #`simdelay 5'b00000;
-      `OP_I_JALR: 											// I-type (JALR)
-			alucontrol <= #`simdelay 5'b00000;
-      `OP_S:  													// S-type Store (SW, SH, SB)
-			alucontrol <= #`simdelay 5'b00000;
-      `OP_U_LUI: 												// U-type (LUI)
-			alucontrol <= #`simdelay 5'b00000;
-      `OP_U_AUIPC: 											// U-type (AUIPC)
-      		alucontrol <= #`simdelay 5'b00000;  		// addition 
+      `OP_I_LOAD: 	// I-type Load (LW, LH, LB...)
+			alucontrol <= #`simdelay 5'b00000;	// addition 
+      `OP_I_JALR: 	// I-type (JALR)
+			alucontrol <= #`simdelay 5'b00000;	// addition 
+      `OP_S:  		// S-type Store (SW, SH, SB)
+			alucontrol <= #`simdelay 5'b00000;	// addition 
+      `OP_U_LUI: 		// U-type (LUI)
+			alucontrol <= #`simdelay 5'b00000;	// addition 
+      `OP_U_AUIPC: 	// U-type (AUIPC)
+      	alucontrol <= #`simdelay 5'b00000;  // addition 
 
-      `OP_B:   												// B-type Branch (BEQ, BNE, ...)
+      `OP_B:   		// B-type Branch (BEQ, BNE, ...)
       	alucontrol <= #`simdelay 5'b10000;  // subtraction 
 
       default: 
@@ -215,8 +229,6 @@ module aludec(input      [6:0] opcode,
     endcase
     
 endmodule
-
-
 
 
 //
@@ -236,112 +248,123 @@ module datapath(input         clk, reset,
                 input         jalr,
 
                 output reg [31:0] pc,
-                output [31:0] aluout,
-                output [31:0] MemWdata,
-                input  [31:0] MemRdata);
+				
+  				// ###### SangJin Park : Start #####
+				output reg memwrite_tmp,
+				output reg stall_tmp,
+                output reg [31:0] aluout_EXE_MEM,
+                output reg [31:0] MemWdata_EXE_MEM,
+                input  [31:0] MemRdata_EXE_MEM);
+  				// ###### SangJin Park : End #####
 
   wire [4:0]  rs1, rs2, rd;
-  reg [4:0]  rd_ID_EXE, rd_EXE_MEM, rd_MEM_WB; // rd extended with FF
   wire [2:0]  funct3;
   wire [31:0] rs1_data, rs2_data;
   reg  [31:0] rd_data;
   wire [20:1] jal_imm;
   wire [31:0] se_jal_imm;
-  reg  [31:0] se_jal_imm_ff; //ff
   wire [12:1] br_imm;
   wire [31:0] se_br_imm;
-  reg  [31:0] se_br_imm_ff; //ff
-  wire [31:0] se_imm_itype;
-  wire [31:0] se_imm_stype; 
-  wire [31:0] auipc_lui_imm;
+  reg [31:0] se_imm_itype;
+  reg [31:0] se_imm_stype;
+  reg [31:0] auipc_lui_imm;
   reg  [31:0] alusrc1;
   reg  [31:0] alusrc2;
-  reg  [31:0] rs1_data_ID_EXE; //ff
-  reg	 [31:0] rs2_data_ID_EXE; //ff
-  reg  [31:0] rs2_data_EXE_MEM; //ff
-  reg  [31:0] MemRdata_ff; //ff
-  reg  [31:0] aluout_EXE_MEM; //ff
-  reg  [31:0] aluout_MEM_WB; //ff
-  
-  reg 		auipc_ff; //ff
-  reg			lui_ff; //ff
-  reg 		alusrc_ff; //ff 
-  reg [4:0] alucontrol_ff; //ff
-  reg 		jal_ff, jalr_ff; //ff
-
-  reg			memwrite_ID_EXE; //ff
-  reg			memtoreg_ID_EXE; //ff
-  reg			regwrite_ID_EXE; //ff
-  
-  reg			memwrite_EXE_MEM; //ff
-  reg			regwrite_EXE_MEM; //ff
-  reg			memtoreg_EXE_MEM; //ff
-
-  reg			regwrite_MEM_WB; //ff
-  reg			memtoreg_MEM_WB; //ff
-
-  wire [1:0]	fw1, fw2;
-  reg  [4:0]    rs1_ID_EXE, rs2_ID_EXE;
-  
-  wire			stall;
-  
-  wire [31:0] branch_dest, jal_dest, jalr_dest;		
+  wire [31:0] branch_dest, jal_dest, jalr_dest;	
   wire		  Nflag, Zflag, Cflag, Vflag;
   wire		  f3beq, f3blt, f3bgeu;
   wire		  beq_taken;
   wire		  blt_taken;
-  wire		  bgeu_taken;	
+  wire		  bgeu_taken;		
   wire		  btaken;
-  
-  reg  [31:0] pc_IF_ID, pc_ID_EXE; //ff
-  reg  [31:0] inst_ff; //ff
 
-  assign rs1 = inst_ff[19:15];
-  assign rs2 = inst_ff[24:20];
-  assign rd  = inst_ff[11:7];
-  assign funct3  = inst_ff[14:12];
+  
+  // ###### SangJin Park : Start #####
+  //var added for Flip-Flop
+  wire [31:0] aluout_ID_EXE;
+  
+  reg  [31:0] rs1_data_tmp, rs2_data_tmp;
+  reg  [31:0] aluout_MEM_WB;
+  reg  [31:0] MemWdata_ID_EXE, MemRdata_MEM_WB;
+  reg  [31:0] rs1_ID_EXE, rs2_ID_EXE;
+  reg  [31:0] pc_IF_ID, pc_ID_EXE, pc_EXE_MEM, pc_MEM_WB;
+  reg  [31:0] rs1_data_ID_EXE, rs2_data_ID_EXE;
+  reg  [4:0]  rd_ID_EXE, rd_EXE_MEM, rd_MEM_WB;
+  reg  [4:0]  alucontrol_ID_EXE;
+  reg  		  alusrc_ID_EXE, branch_ID_EXE, branch_EXE_MEM;
+  reg	      memwrite_ID_EXE, memwrite_EXE_MEM;
+  reg		  memtoreg_ID_EXE, memtoreg_EXE_MEM, memtoreg_MEM_WB;
+  reg		  regwrite_ID_EXE, regwrite_EXE_MEM, regwrite_MEM_WB;
+  reg		  auipc_ID_EXE, lui_ID_EXE;
+  reg   	  jal_ID_EXE, jal_EXE_MEM, jal_MEM_WB;
+  reg		  jalr_ID_EXE, jalr_EXE_MEM, jalr_MEM_WB;
+  
+  reg  [31:0] auipc_lui_imm_ID_EXE, se_imm_itype_ID_EXE, se_imm_stype_ID_EXE;
+  
+  reg [1:0]  fw1, fw2;
+  wire [1:0] fw1_tmp, fw2_tmp;		
+
+  // ###### SangJin Park : End #####
+  
+  // ###### SangJin Park : Start #####
+  always @(*)
+	begin
+		fw1 <= fw1_tmp;
+		fw2 <= fw2_tmp;
+	end
+  // ###### SangJin Park : End #####
+
+  
+  assign rs1 = inst[19:15];
+  assign rs2 = inst[24:20];
+  assign rd  = inst[11:7];
+  assign funct3  = inst[14:12];
 
   //
   // PC (Program Counter) logic 
   //
   assign f3beq  = (funct3 == 3'b000);
   assign f3blt  = (funct3 == 3'b100);
-  assign f3bgeu = (funct3 == 3'b111);	
+  assign f3bgeu = (funct3 == 3'b111);
 
-  assign beq_taken  =  branch & f3beq & Zflag;        ////////////////// to be correct/////
+  assign beq_taken  =  branch & f3beq & Zflag;
   assign blt_taken  =  branch & f3blt & (Nflag != Vflag);
-  assign bgeu_taken =  branch & f3bgeu & Cflag;
+  assign bgeu_taken =  branch & f3bgeu & Cflag;	
   assign btaken     =  beq_taken  | blt_taken | bgeu_taken; 
 
-  assign branch_dest = (pc_ID_EXE + se_br_imm_ff); //chg : (pc + se_br_imm) -> (pc_ID_EXE + se_br_imm_ff)
-  assign jal_dest 	= (pc_ID_EXE + se_jal_imm_ff); //chg : (pc + se_jal_imm) -> (pc_ID_EXE + se_jal_imm_ff)
-  assign jalr_dest   = {aluout[31:1],1'b0};	///////////***********************?////////////////
+  // ###### SangJin Park : Start #####
+  assign branch_dest = (pc_IF_ID + se_br_imm);
+  assign jal_dest 	= (pc_IF_ID + se_jal_imm);
+  assign jalr_dest   = {aluout_EXE_MEM[31:0]};
+  // ###### SangJin Park : End #####
 
-  always @(posedge clk, posedge reset) //1
+  always @(posedge clk, posedge reset)
   begin
      if (reset)  pc <= 32'b0;
 	  else 
+  		// ###### SangJin Park : Start ##### 
 	  begin
-			if(~stall)
-				if (btaken) // branch_taken
-					pc <= #`simdelay branch_dest;
-				else if (jal_ff) // jal
-					pc <= #`simdelay jal_dest;
-				else if (jalr_ff)
-					pc <= #`simdelay jalr_dest;	
-				else 
-					pc <= #`simdelay (pc + 4);
-			
+	      if (btaken) // branch_taken
+				pc <= #`simdelay branch_dest;
+		   else if (jal) // jal
+				pc <= #`simdelay jal_dest;
+			else if (jalr)
+				pc <= #`simdelay jalr_dest;	
+		   else if (stall_tmp)
+				pc <= pc;
+			else	
+				pc <= #`simdelay (pc + 4);
 	  end
+  		// ###### SangJin Park : End #####
   end
 
 
   // JAL immediate
-  assign jal_imm[20:1] = {inst_ff[31],inst_ff[19:12],inst_ff[20],inst_ff[30:21]};
+  assign jal_imm[20:1] = {inst[31],inst[19:12],inst[20],inst[30:21]};
   assign se_jal_imm[31:0] = {{11{jal_imm[20]}},jal_imm[20:1],1'b0};
 
   // Branch immediate
-  assign br_imm[12:1] = {inst_ff[31],inst_ff[7],inst_ff[30:25],inst_ff[11:8]};
+  assign br_imm[12:1] = {inst[31],inst[7],inst[30:25],inst[11:8]};
   assign se_br_imm[31:0] = {{19{br_imm[12]}},br_imm[12:1],1'b0};
 
 
@@ -350,239 +373,255 @@ module datapath(input         clk, reset,
   // Register File 
   //
   regfile i_regfile(
-    .clk			(clk),
-    .we			(regwrite_MEM_WB), //ff
-    .rs1			(rs1),
-    .rs2			(rs2),
+    .clk	    (clk),
+    .we			(regwrite_MEM_WB),
+    .rs1		(rs1),
+    .rs2		(rs2),
     .rd			(rd_MEM_WB),
     .rd_data	(rd_data),
     .rs1_data	(rs1_data),
     .rs2_data	(rs2_data));
 
 
-	assign MemWdata = rs2_data_EXE_MEM;
+	//assign MemWdata = rs2_data;
 	
-	always @(posedge clk) //2
+	
+	
+  	// ###### SangJin Park : Start ##### 
+	//ff : IF -> ID
+	always @(posedge clk)
 		begin
-			pc_IF_ID <= pc;
-		end
-		
-	always @(posedge clk) //3
-		begin
-			if(~stall) inst_ff <= inst;
-		end
-		
-	always @(posedge clk) //4
-		begin	
-			auipc_ff <= auipc;
-			lui_ff <= lui;
-			alusrc_ff <= alusrc;
-			alucontrol_ff <= alucontrol;
-			jal_ff <= jal;
-			jalr_ff <= jalr;
-			memtoreg_ID_EXE <= memtoreg;
-			if(stall)
-				begin
-					memwrite_ID_EXE <= 1'b0;
-					regwrite_ID_EXE <= 1'b0;
-				end
+			if(stall_tmp)
+				pc_IF_ID <= pc_IF_ID;
 			else
-				begin
-					memwrite_ID_EXE <= memwrite;
-					regwrite_ID_EXE <= regwrite;
-				end
-		end
-		
-	always @(posedge clk) //5
-		begin
-			pc_ID_EXE <= pc_IF_ID;
-		end
-
-	
-	always @(posedge clk) //6
-		begin
-			rs1_data_ID_EXE <= rs1_data;
+				pc_IF_ID <= pc;
 		end
 	
-	always @(posedge clk) //7
-		begin
-			rs2_data_ID_EXE <= rs2_data;
-		end
-
+	
+	//ff : ID -> EXE
+	always @(posedge clk)
+		if(stall_tmp)
+			begin
+				rs1_ID_EXE <= 0;
+				rs2_ID_EXE <= 0;
+				rd_ID_EXE <= 0;
+				pc_ID_EXE <= 0;
+				memwrite_ID_EXE <= 0;
+				regwrite_ID_EXE <= 0;
+				alusrc_ID_EXE <= 0;
+				alucontrol_ID_EXE <= 0;
+				memwrite_ID_EXE <= 0;
+				memtoreg_ID_EXE <= 0;
+				regwrite_ID_EXE <= 0;
+				branch_ID_EXE <= 0;
+				auipc_ID_EXE <= 0;
+				lui_ID_EXE <= 0;
+				jal_ID_EXE <= 0;
+				jalr_ID_EXE <= 0;
+			end
+		else
+			begin
+				//control signal
+				alusrc_ID_EXE <= alusrc;
+				alucontrol_ID_EXE <= alucontrol;
+				memwrite_ID_EXE <= memwrite;
+				memtoreg_ID_EXE <= memtoreg;
+				regwrite_ID_EXE <= regwrite;
+				branch_ID_EXE <= branch;
+				auipc_ID_EXE <= auipc;
+				lui_ID_EXE <= lui;
+				jal_ID_EXE <= jal;
+				jalr_ID_EXE <= jalr;
+				
+				//data
+				pc_ID_EXE <= pc_IF_ID;
+				rs1_ID_EXE <= rs1;
+				rs2_ID_EXE <= rs2;
+				rd_ID_EXE <= rd;
+				rs1_data_ID_EXE <= rs1_data_tmp;
+				rs2_data_ID_EXE <= rs2_data_tmp;
+				
+				//imm
+				auipc_lui_imm_ID_EXE <= auipc_lui_imm;
+				se_imm_itype_ID_EXE <= se_imm_itype;
+				se_imm_stype_ID_EXE <= se_imm_stype;
+			end
 		
-	always @(posedge clk) //8
+	
+	//ff : EXE -> MEM
+	always @(posedge clk)
 		begin
-			rd_ID_EXE <= rd;
-		end
-		
-	always @(posedge clk) //9
-		begin
-			se_br_imm_ff <= se_br_imm;
-			se_jal_imm_ff <= se_jal_imm;
-		end
-		
-	always @(posedge clk) //10
-		begin
+			//control
 			memwrite_EXE_MEM <= memwrite_ID_EXE;
 			memtoreg_EXE_MEM <= memtoreg_ID_EXE;
 			regwrite_EXE_MEM <= regwrite_ID_EXE;
-		end
-		
-	always @(posedge clk) //11
-		begin
-			rs2_data_EXE_MEM <= rs2_data_ID_EXE;
-		end
-		
-	always @(posedge clk) //12
-		begin
-			aluout_EXE_MEM <= aluout;
-		end
-
-	always @(posedge clk) //13
-		begin
+			branch_EXE_MEM <= branch_ID_EXE;
+			jal_EXE_MEM <= jal_ID_EXE;
+			jalr_EXE_MEM <= jalr_ID_EXE;
+			
+			aluout_EXE_MEM <= aluout_ID_EXE;
+			pc_EXE_MEM <= pc_ID_EXE;
 			rd_EXE_MEM <= rd_ID_EXE;
+			MemWdata_EXE_MEM <= MemWdata_ID_EXE;
 		end
 	
-	always @(posedge clk) //14
+	
+	//ff : MEM -> WB
+	always @(posedge clk)
 		begin
-			regwrite_MEM_WB <= regwrite_EXE_MEM;
+			//control
 			memtoreg_MEM_WB <= memtoreg_EXE_MEM;
-		end
-		
-	always @(posedge clk) //15
-		begin
-			MemRdata_ff <= MemRdata;
-		end
-		
-	always @(posedge clk) //16
-		begin
-			aluout_MEM_WB <=  aluout_EXE_MEM;
-		end	
-		
-	always @(posedge clk) //17
-		begin
+			regwrite_MEM_WB <= regwrite_EXE_MEM;
+			jal_MEM_WB <= jal_EXE_MEM;
+			jalr_MEM_WB <= jalr_EXE_MEM;
+			
+			pc_MEM_WB <= pc_EXE_MEM;
+			aluout_MEM_WB <= aluout_EXE_MEM;
 			rd_MEM_WB <= rd_EXE_MEM;
+			MemRdata_MEM_WB <= MemRdata_EXE_MEM;
 		end
-		
-
-	always @(posedge clk) //for forwarding unit
-		begin
-			rs1_ID_EXE <= rs1;
-			rs2_ID_EXE <= rs2;
-		end
-		
+  	// ###### SangJin Park : End ##### 
 	
+
+	
+
+
+  	// ###### SangJin Park : Start ##### 
+	
+	// interlock - switch stall
+    always@(*)
+    begin
+      if(memtoreg_ID_EXE && ((rd_ID_EXE == rs1) || (rd_ID_EXE == rs2))) 
+	  		stall_tmp = 1'b1;
+      else  stall_tmp = 1'b0;
+    end
+	 
+	 
+    always@(*)
+    begin
+      if((rd_MEM_WB == rs2_ID_EXE) && memtoreg_MEM_WB && memwrite_ID_EXE) 
+	  		MemWdata_ID_EXE = MemRdata_MEM_WB;
+	   else if ((rd_MEM_WB == rs2_ID_EXE) && regwrite_MEM_WB && (~memtoreg_MEM_WB) && memwrite_ID_EXE) 
+	   		MemWdata_ID_EXE = aluout_MEM_WB;
+	   else MemWdata_ID_EXE = rs2_data_ID_EXE;
+    end
+      
+    always@(*)
+	 begin
+      memwrite_tmp = memwrite_EXE_MEM;
+		end
+
+		
+    always@(*)
+    begin
+     if ((rd_MEM_WB == rs1) && memtoreg_MEM_WB && (regwrite || memwrite)) 
+	 	rs1_data_tmp = MemRdata_MEM_WB;
+     else if ((rd_MEM_WB == rs1) && regwrite_MEM_WB && (regwrite || memwrite)) 
+	 	rs1_data_tmp = rd_data;
+     else rs1_data_tmp = rs1_data;
+    end
+
+    always@(*)
+    begin
+      if ((rd_MEM_WB == rs2) && memtoreg_MEM_WB && (regwrite || memwrite)) 
+	  		rs2_data_tmp = MemRdata_MEM_WB;
+      else if ((rd_MEM_WB == rs2) && regwrite_MEM_WB && (regwrite || memwrite)) 
+	  		rs2_data_tmp = rd_data;
+      else  rs2_data_tmp = rs2_data;
+    end
+
+
+    
+
+  	// ###### SangJin Park : End ##### 
+
+
+
+
 
 	//
 	// ALU 
 	//
 	alu i_alu(
-		.a			(alusrc1), //chg : alusrc1 -> alusrc1_ff
-		.b			(alusrc2), //chg : alusrc2 -> alusrc2_ff
-		.alucont	(alucontrol_ff),
-		.result	(aluout),
+		.a			(alusrc1),
+		.b			(alusrc2),
+		.alucont	(alucontrol_ID_EXE),
+		.result	(aluout_ID_EXE),
 		.N			(Nflag),
 		.Z			(Zflag),
 		.C			(Cflag),
 		.V			(Vflag));
 		
+    // ###### SangJin Park: Start #######
 
 	// 1st source to ALU (alusrc1)
 	always@(*)
 	begin
-		//// below 2 line add
-		if (fw1 == 2'b10) alusrc1[31:0]  =  rd_MEM_WB; //ff 
-		else if (fw1 == 2'b01) alusrc1[31:0]  =  rd_EXE_MEM; //ff
-		else if      (auipc_ff)	alusrc1[31:0]  =  pc; //chg : auipc -> auipc_ff
-		else if (lui_ff) 		alusrc1[31:0]  =  32'b0;
-		else          		alusrc1[31:0]  =  rs1_data_ID_EXE; //chg : rs1_data[31:0] -> rs1_data_ID_EXE
+		if      (auipc_ID_EXE)	alusrc1[31:0]  =  pc_ID_EXE;  
+		else if (lui_ID_EXE) 		alusrc1[31:0]  =  32'b0;
+    	else if ((rd_MEM_WB == rs1_ID_EXE) && memtoreg_MEM_WB && (regwrite_ID_EXE || memwrite_ID_EXE)) 
+				alusrc1[31:0] = MemRdata_MEM_WB;
+    	else if ((rd_EXE_MEM == rs1_ID_EXE) && regwrite_EXE_MEM && (regwrite_ID_EXE || memwrite_ID_EXE)) 
+				alusrc1[31:0] = aluout_EXE_MEM;
+    	else if ((rd_MEM_WB == rs1_ID_EXE) && regwrite_MEM_WB && (regwrite_ID_EXE || memwrite_ID_EXE))   
+				alusrc1[31:0] = aluout_MEM_WB;
+    	else    alusrc1[31:0] = rs1_data_ID_EXE[31:0];
 	end
 	
 	// 2nd source to ALU (alusrc2)
 	always@(*)
 	begin
-		//// below 2 line add
-		if(fw2 == 2'b10) alusrc2[31:0]  =  rd_MEM_WB; //ff
-		else if (fw2 == 2'b01) alusrc2[31:0]  =  rd_EXE_MEM; //ff
-		else if	     (auipc_ff | lui_ff)			alusrc2[31:0] = auipc_lui_imm[31:0]; //chg : auipc -> auipc_ff
-		else if (alusrc_ff & memwrite_EXE_MEM)	alusrc2[31:0] = se_imm_stype[31:0]; //chg : alusrc -> alusrc_ff
-		else if (alusrc_ff)					alusrc2[31:0] = se_imm_itype[31:0]; //chg : alusrc -> alusrc_ff
-		else									alusrc2[31:0] = rs2_data_ID_EXE; //chg : rs2_data[31:0] -> rs2_data_ID_EXE
+		if	     (auipc_ID_EXE | lui_ID_EXE)	    alusrc2[31:0] = auipc_lui_imm_ID_EXE[31:0];
+		else if (alusrc_ID_EXE & memwrite_ID_EXE)	alusrc2[31:0] = se_imm_stype_ID_EXE[31:0];
+		else if (alusrc_ID_EXE)		              alusrc2[31:0] = se_imm_itype_ID_EXE[31:0];
+    	else if ((rd_MEM_WB == rs2_ID_EXE) && memtoreg_MEM_WB && regwrite_ID_EXE && ~alusrc_ID_EXE) 
+				alusrc2[31:0] = MemRdata_MEM_WB; 
+    	else if ((rd_EXE_MEM == rs2_ID_EXE) && regwrite_EXE_MEM && regwrite_ID_EXE  && ~alusrc_ID_EXE) 
+				alusrc2[31:0] = aluout_EXE_MEM;     
+    	else if ((rd_MEM_WB == rs2_ID_EXE) && regwrite_MEM_WB && regwrite_ID_EXE && ~alusrc_ID_EXE)   
+				alusrc2[31:0] = aluout_MEM_WB;
+    	else    alusrc2[31:0] = rs2_data_ID_EXE[31:0];
 	end
-	
-	assign se_imm_itype[31:0] = {{20{inst_ff[31]}},inst_ff[31:20]}; //inst -> inst_ff
-	assign se_imm_stype[31:0] = {{20{inst_ff[31]}},inst_ff[31:25],inst_ff[11:7]}; //inst -> inst_ff
-	assign auipc_lui_imm[31:0] = {inst_ff[31:12],12'b0}; //inst -> inst_ff
+
+    always@(*)
+    begin
+         se_imm_itype[31:0] <= {{20{inst[31]}},inst[31:20]};
+         se_imm_stype[31:0] <= {{20{inst[31]}},inst[31:25],inst[11:7]};
+         auipc_lui_imm[31:0] <= {inst[31:12],12'b0};
+    end
 
 
 	// Data selection for writing to RF
 	always@(*)
 	begin
-		if	     (jal_ff | jalr_ff)			rd_data[31:0] = pc + 4;
-		else if (memtoreg_MEM_WB)	rd_data[31:0] = MemRdata_ff; //chg : memtoreg -> memtoreg_MEM_WB, MemRdata -> MemRdata_ff
-		else						rd_data[31:0] = aluout_MEM_WB; //chg : aluout -> aluout_MEM_WB
+		if	     (jal_MEM_WB)			rd_data[31:0] = pc_MEM_WB + 4;
+		else if (memtoreg_MEM_WB)	rd_data[31:0] = MemRdata_MEM_WB;
+		else						rd_data[31:0] = aluout_MEM_WB;
 	end
-
-	Forwarding_Unit i_Forwarding_Unit( 
-		.rs1_EXE     (rs1_ID_EXE),
-		.rs2_EXE     (rs2_ID_EXE),
-		.rd_MEM     (rd_EXE_MEM),
-		.rd_WB (rd_MEM_WB),
-		.forward_1 (fw1), 
-		.forward_2 (fw2));
-		
-	Interlock i_Interlock(
-		.rs1_ID	(rs1),
-		.rs2_ID	(rs2),
-		.rd_EXE	(rd_ID_EXE),
-		.memtoreg_EXE	(memtoreg_ID_EXE),
-		.stall	(stall));
+    
+	// ###### SangJin Park: End #######
+    
 	
 endmodule
 
-//
-// DATA_FORWARDING
-//
-module Forwarding_Unit(input  [4:0] rs1_EXE,
-						  input  [4:0] rs2_EXE,
-						  input  [4:0] rd_MEM,
-						  input  [4:0] rd_WB,
-						  output reg [1:0] forward_1,
-						  output reg [1:0] forward_2);
-
-	always @(*)
-		begin
-			if (rd_WB[4:0] == rs1_EXE[4:0])
-				forward_1 = 2'b10;
-			else if (rd_MEM[4:0] == rs1_EXE[4:0])
-				forward_1 = 2'b01;
-			else forward_1 = 2'b00;
-		end
-	
-	always @(*)
-		begin
-			if (rd_WB[4:0] == rs2_EXE[4:0])
-				forward_2 = 2'b10;
-			else if (rd_MEM[4:0] == rs2_EXE[4:0])
-				forward_2 = 2'b01;
-			else forward_2 = 2'b00;
-		end
-		
-endmodule
 
 
-module Interlock(input	[4:0] rs1_ID,
-					  input	[4:0] rs2_ID,
-					  input  [4:0] rd_EXE,
-					  input			memtoreg_EXE,
-					  output reg	stall);
-					  
-	always @(*)
-		begin
-			if (memtoreg_EXE && ((rd_EXE[4:0] == rs1_ID[4:0]) || (rd_EXE[4:0] == rs2_ID[4:0])))
-				stall = 1'b1;
-			else stall = 1'b0;
-		end
-		
-endmodule
-			
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

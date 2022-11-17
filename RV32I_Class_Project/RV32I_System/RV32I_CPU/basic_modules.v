@@ -19,7 +19,6 @@ module regfile(input             clk,
                input      [31:0] rd_data, 
                output reg [31:0] rs1_data, rs2_data);
 
-					
 	reg [31:0] x1;
 	reg [31:0] x2;
 	reg [31:0] x3;
@@ -167,7 +166,7 @@ module regfile(input             clk,
 		5'd30:  rs1_data = x30;
 		5'd31:  rs1_data = x31;
 		endcase
-	end 
+	end
 
 endmodule
 
@@ -180,8 +179,6 @@ module regfile(input         clk,
                output [31:0] rs1_data, rs2_data);
 
   reg [31:0] rf[31:0];
-  
-
 
   // three ported register file
   // read two ports combinationally
@@ -220,19 +217,14 @@ module alu(input      [31:0] a, b,
 								.C   (C),
 								.V   (V));
 
-  // signed less than condition
-  assign slt  = N ^ V ; 
-
-  // unsigned lower (C clear) condition
-  assign sltu = ~C ;   
 
   always@(*)
     case(alucont[3:0])
       4'b0000: result <= #`simdelay sum;    // A + B, A - B
       4'b0001: result <= #`simdelay a & b;
       4'b0010: result <= #`simdelay a | b;
-		4'b0011: result <= #`simdelay a ^ b; // xor
-      4'b1000: result <= #`simdelay {31'b0,sltu};
+	  4'b0011: result <= #`simdelay a ^ b;	//xor
+	  4'b0100: result <= #`simdelay a << b[4:0];  //sll
       default: result <= #`simdelay 32'b0;
     endcase
 
